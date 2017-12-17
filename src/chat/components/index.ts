@@ -1,0 +1,5 @@
+export * from "./navbar/navbar.component"
+export * from "./chat-members/chatMembers.component"
+export * from "./chat-history/chatHistory.component"
+export * from "./chat-input/chatInput.component"
+export * from "./chat.component"
