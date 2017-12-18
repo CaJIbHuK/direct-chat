@@ -1,4 +1,4 @@
-import {Component, Inject, OnDestroy, OnInit} from "@angular/core";
+import {Component, Inject, OnDestroy, OnInit, ChangeDetectorRef} from "@angular/core";
 import css from "./chat.component.css!text";
 import {SignalService} from "../../app/common/services/signalling.service";
 import {AuthService} from "../../app/common/services/auth.service";
@@ -58,6 +58,51 @@ class Message {
   }
 }
 
+class SystemLogger {
+
+  SYSTEM_LOGS = {
+    LOGIN: (name) => `User '${name}' is logged in`,
+    LOGOUT: (name) => `User '${name}' is logged out`,
+    CONNECTED: (name) => `You are connected as '${name}'`,
+    FAILED_TO_CONNECT: () => `FAILED TO CONNECT`,
+  };
+
+  constructor(public name) {}
+
+  formatLog(text: string) {
+    return `~~~~~~~~${text}~~~~~~~~`;
+  }
+
+  createSystemMessage(text, color='black') {
+    console.log(`SYSTEM LOG: ${text}`);
+    let msg = new Message(text, this.name);
+    msg.setColor(color);
+    return msg;
+  }
+
+  LOGIN(name) {
+    let text = this.formatLog(this.SYSTEM_LOGS.LOGIN(name));
+    return this.createSystemMessage(text, 'green')
+  }
+
+  LOGOUT(name) {
+    let text = this.formatLog(this.SYSTEM_LOGS.LOGOUT(name));
+    return this.createSystemMessage(text, 'grey')
+  }
+
+  CONNECTED(name) {
+    let text = this.formatLog(this.SYSTEM_LOGS.CONNECTED(name));
+    return this.createSystemMessage(text, 'green')
+  }
+
+  FAILED_TO_CONNECT(name) {
+    let text = this.formatLog(this.SYSTEM_LOGS.FAILED_TO_CONNECT());
+    return this.createSystemMessage(text, 'red')
+  }
+
+
+}
+
 @Component({
   selector : 'chat',
   template : `
@@ -77,11 +122,13 @@ class Message {
 export class ChatComponent implements OnInit {
 
   loading : boolean = false;
+  systemLogger = new SystemLogger('SYSTEM');
   name : string;
   members : { [key : string] : ChatMember } = {};
   messages : Message[] = [];
 
   constructor(@Inject(SignalService) private signal : SignalService,
+              @Inject(ChangeDetectorRef) private changes : ChangeDetectorRef,
               @Inject(AuthService) private auth : AuthService) {
   }
 
@@ -96,25 +143,32 @@ export class ChatComponent implements OnInit {
   ngOnDestroy() {
     Object.keys(this.members)
       .forEach(name => {
-        this.members[name].pc.close();
         this.members[name].dataChannel.close();
+        this.members[name].pc.close();
       });
     this.members = {};
   }
 
   initChat(username : string) {
     let RTCPeerConnection = window.RTCPeerConnection || webkitRTCPeerConnection || mozRTCPeerConnection;
-    this.signal.sendUsers();
+
+    // DETECT IF USER LOGOUT
+    this.signal.addHandler((data) => {
+      this.addToMessages(this.systemLogger.LOGOUT(data.name));
+      let member = this.members[data.name];
+      member.dataChannel.close();
+      member.pc.close();
+      delete this.members[data.name];
+    }, this.signal.MESSAGE_TYPES.LOGOUT);
+
+
+    // SEND OFFER TO OTHER USERS
     this.signal.addHandler((data) => {
       data.users.forEach(name => {
         if (name === username) return;
 
         let member = new ChatMember();
         member.pc = new RTCPeerConnection({'iceServers' : ICE_SERVERS});
-        member.pc.oniceconnectionstatechange = (event) => {
-          console.log(`Connection to user '${name}' status: ${member.pc.iceConnectionState}`);
-        };
-
         member.pc.onicecandidate = (event) => {
           if (!event.candidate) {
             this.signal.sendOffer(JSON.stringify(member.pc.localDescription), name);
@@ -123,24 +177,23 @@ export class ChatComponent implements OnInit {
 
         member.dataChannel = member.pc.createDataChannel('text-chat');
         member.dataChannel.onmessage = (event) => this.onMessage(event);
-        member.dataChannel.onopen = (event) => console.log(`OPENNED CHANNEL WITH ${data.name}`);
+
+        this.signal.addHandler((data) => {
+          member = this.members[data.name];
+          member.pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(data.answer)));
+        }, this.signal.MESSAGE_TYPES.ANSWER);
+
         member.pc.createOffer()
           .then((desc : RTCSessionDescription) => {
             member.pc.setLocalDescription(desc);
           });
 
-        this.signal.addHandler((data) => {
-          member = this.members[data.name];
-          if (member.pc.iceConnectionState === 'connected') return;
-          member.pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(data.answer)));
-        }, this.signal.MESSAGE_TYPES.ANSWER);
-
         this.members[name] = member;
-        console.log(this.members);
       })
     }, this.signal.MESSAGE_TYPES.USERS);
 
 
+  // ACCEPT OFFER AND ANSWER TO OTHER USERS
     this.signal.addHandler((data) => {
       let member = new ChatMember();
       member.pc = new RTCPeerConnection({'iceServers' : ICE_SERVERS});
@@ -148,41 +201,46 @@ export class ChatComponent implements OnInit {
         console.log(`Connection to user '${data.name}' status: ${member.pc.iceConnectionState}`);
       };
       member.pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(data.offer)));
+
+      member.pc.ondatachannel = (e) => {
+        member.dataChannel = e.channel;
+        member.dataChannel.onmessage = (event) => this.onMessage(event);
+        member.dataChannel.onopen = (event) => this.addToMessages(this.systemLogger.LOGIN(data.name));
+      };
+
       member.pc.createAnswer().then(desc => {
         member.pc.setLocalDescription(desc);
         this.signal.sendAnswer(JSON.stringify(desc), data.name);
       });
 
-      member.pc.ondatachannel = (e) => {
-        member.dataChannel = e.channel;
-        member.dataChannel.onmessage = (event) => this.onMessage(event);
-        member.dataChannel.onopen = (event) => console.log(`OPENNED CHANNEL WITH ${data.name}`);
-      };
-
-
       this.members[data.name] = member;
     }, this.signal.MESSAGE_TYPES.OFFER);
+
+    this.signal.sendUsers();
+  }
+
+  addToMessages(msg : Message) {
+    this.messages.push(msg);
+    this.messages.sort((m1, m2) => m1.timestamp - m2.timestamp);
+    this.changes.detectChanges();
   }
 
   onMessage(event) {
     let msg = Message.fromJSON(event.data);
-    msg.markAsSent();
     msg.setColor(this.members[msg.author].color);
-    this.messages.push(msg);
-    this.messages.sort((m1, m2) => m1.timestamp - m2.timestamp);
+    this.addToMessages(msg);
   }
 
   send(message : string) : void {
     this.loading = true;
     let msg = new Message(message, this.name);
-    this.messages.push(msg);
+    this.addToMessages(msg);
     Object.keys(this.members)
       .forEach(name => {
         console.log(`Sending '${msg.text}'...`);
         this.members[name].dataChannel.send(msg.toJSON())
       });
     this.loading = false;
-    msg.markAsSent();
   }
 
 
