@@ -365,14 +365,20 @@ export class ChatComponent implements OnInit {
         file.size += event.data.byteLength;
       };
       channel.onopen = (event) => {
+        message.isDownloading = true;
         channel.send(JSON.stringify({filename : message.text}));
+        this.changes.detectChanges();
       };
       channel.onclose = (event) => {
         let file = fileOwner.getFile(message.text);
         this.saveFile(file.name, new Blob(file.content, file.type));
+        message.isDownloading = false;
+        this.changes.detectChanges();
       };
       channel.onerror = (event) => {
         console.log(`ErrOR`);
+        message.isDownloading = false;
+        this.changes.detectChanges();
       }
 
     }

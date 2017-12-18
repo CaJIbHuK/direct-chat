@@ -65,10 +65,12 @@ export class TextMessage extends Message {
 
 export class FileMessage extends Message {
   content : File;
+  isDownloading : boolean;
 
   constructor(filename : string, content : File, author, timestamp : any = null) {
     super(filename, author, MessageType.FILE, timestamp);
     this.content = content;
+    this.isDownloading = false;
   }
 
   static fromJSON(parsed) {

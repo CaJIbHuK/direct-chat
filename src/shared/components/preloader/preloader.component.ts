@@ -3,7 +3,7 @@ import css from "./preloader.component.css!text";
 
 
 @Component({
-  selector : 'preloader',
+  selector : '[preloader]',
   template : `
       <div class="loading"></div>
   `,
