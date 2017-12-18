@@ -205,6 +205,9 @@ class ChatSignallingServer {
           name : connection.name
         })
       });
+      connection.on('error', (event) => {
+        console.log(event);
+      })
     })
   }
 }

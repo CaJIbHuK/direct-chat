@@ -10,7 +10,7 @@ import commonCss from "../common/auth.component.css!text";
       <div class="container signin-container modal-auth-container"><h1>Sign in to Chat</h1><br>
           <form (ngSubmit)="onSubmit()" class="signin-form" novalidate #form="ngForm">
               <div class="signin-form-body">
-                  <ngb-alert *ngIf="error" (close)="error=false" [type]="'danger'">{{texts.error}}</ngb-alert>
+                  <ngb-alert *ngIf="error" (close)="error=''" [type]="'danger'">{{error}}</ngb-alert>
                   <div class="form-group"><input class="form-control" type="text" id="name" placeholder="Enter your name"
                                                  [disabled]="loading" name="name" [(ngModel)]="name" required></div>
               </div>
@@ -25,10 +25,7 @@ export class SignInComponent {
 
   loading : boolean;
   name : string;
-  error : boolean = false;
-  texts = {
-    error : "Cannot connect to chat."
-  };
+  error : string = '';
 
   constructor(@Inject(AuthService) private auth : AuthService,
               @Inject(Router) private router : Router
@@ -39,6 +36,10 @@ export class SignInComponent {
     this.auth.signIn({name : this.name})
       .then(() => this.loading = false)
       .then(() => this.router.navigate(['/chat']))
+      .catch(result => {
+        this.loading = false;
+        this.error = result.errors;
+      })
   }
 
 }

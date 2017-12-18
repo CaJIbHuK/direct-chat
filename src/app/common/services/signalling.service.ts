@@ -74,7 +74,7 @@ export class SignalService {
     this.name = '';
   }
 
-  sendUsers() {
+  getUsers() {
     this.send({}, this.MESSAGE_TYPES.USERS);
   }
 
