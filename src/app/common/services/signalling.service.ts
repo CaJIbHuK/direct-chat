@@ -20,7 +20,9 @@ export class SignalService {
 
   name : string = '';
 
-  constructor() {
+  constructor() {}
+
+  init() {
     this.connection = new WebSocket(this.url);
     this.handlers = {
       [this.MESSAGE_TYPES.LOGIN]: [],
@@ -35,7 +37,13 @@ export class SignalService {
       let data = JSON.parse(message.data);
       this.handlers[data.type].map(handler => handler(data));
     }
+  }
 
+  reset() {
+    // if connection is not closed
+    if (this.connection.readyState != 3) {
+      this.connection.close();
+    }
   }
 
   addHandler(handler, messageType) {

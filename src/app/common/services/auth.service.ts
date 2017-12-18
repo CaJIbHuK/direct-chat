@@ -76,8 +76,9 @@ export class AuthService {
       .then(() => this.generateToken())
       .then(token => this.setToken(token))
       .then(() => this.init(authInfo))
-      .then(() => this.signal.sendLogin(authInfo.name))
       .then(() => new Promise((res, rej) => {
+        this.signal.init();
+        this.signal.connection.onopen = (e) => this.signal.sendLogin(authInfo.name);
         this.signal.addHandler(data =>
           data.success ? res(data) : rej(data.reason), this.signal.MESSAGE_TYPES.LOGIN)
       }))
@@ -92,6 +93,7 @@ export class AuthService {
     return this.reset()
       .then(() => this.router.navigate(['/signin']))
       .then(() => this.signal.sendLogout())
+      .then(() => this.signal.reset())
       .then(() => ({result : true}))
       .catch(errors => ({result : false, errors : errors}))
   }
