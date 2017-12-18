@@ -41,8 +41,8 @@ class ChatSignallingServer {
 
   getAllConnections(filter = [], exclude = []) {
     let connections = Object.keys(this.users)
-      .filter(name => filter ? filter.indexOf(name) !== -1 : true)
-      .filter(name => exclude ? exclude.indexOf(name) === -1 : true)
+      .filter(name => filter.length ? filter.indexOf(name) !== -1 : true)
+      .filter(name => exclude.length ? exclude.indexOf(name) === -1 : true)
       .map(name => this.users[name]);
 
     return connections;
@@ -108,16 +108,15 @@ class ChatSignallingServer {
   logout(connection, data) {
 
     console.log(`Disconnecting '${data.name}'`);
-
-    this.removeUserConnection(data.name);
-
-    this.getAllConnections([], [data.name])
-      .map(conn => this.send(conn, {
-        type : MESSAGE_TYPES.LOGOUT,
-        success : true,
-        name : data.name
-      }))
-
+    if (this.isLoggedIn(data.name)) {
+      this.removeUserConnection(data.name);
+      this.getAllConnections([], [data.name])
+        .forEach(conn => this.send(conn, {
+          type : MESSAGE_TYPES.LOGOUT,
+          success : true,
+          name : data.name
+        }));
+    }
   }
 
   offer(connection, data) {
