@@ -177,6 +177,8 @@ class SystemLogger {
 })
 export class ChatComponent implements OnInit {
 
+  RTCPeerConnection : any;
+
   loading : boolean = false;
   systemLogger = new SystemLogger('SYSTEM');
   name : string;
@@ -190,10 +192,11 @@ export class ChatComponent implements OnInit {
   }
 
   ngOnInit() {
+    this.RTCPeerConnection = window.RTCPeerConnection || webkitRTCPeerConnection || mozRTCPeerConnection;
     return this.auth.getUser().then(user => user.name)
       .then(name => {
         this.name = name;
-        this.initChat(name)
+        this.initChat()
       });
   }
 
@@ -201,33 +204,34 @@ export class ChatComponent implements OnInit {
     this.members.reset();
   }
 
-  initChat(username : string) {
-    let RTCPeerConnection = window.RTCPeerConnection || webkitRTCPeerConnection || mozRTCPeerConnection;
-
-    // DETECT IF USER LOGOUT
+  initMemberLogoutHandler() {
     this.signal.addHandler((data) => {
       this.addToMessages(this.systemLogger.LOGOUT(data.name));
       this.members.removeMember(data.name);
     }, this.signal.MESSAGE_TYPES.LOGOUT);
+  }
 
-
-    // SEND OFFER TO OTHER USERS
+  initMembersConnectionHandler() {
     this.signal.addHandler((data) => {
       data.users.forEach(name => {
-        if (name === username) return;
+        // if user is me -> passing by
+        if (name === this.name) return;
 
+        // add new chat member
         let member = new ChatMember(name);
         this.members.addMember(member);
-        member.pc = new RTCPeerConnection({'iceServers' : ICE_SERVERS});
+        member.pc = new this.RTCPeerConnection({'iceServers' : ICE_SERVERS});
         member.pc.onicecandidate = (event) => {
           if (!event.candidate) {
             this.signal.sendOffer(JSON.stringify(member.pc.localDescription), name);
           }
         };
 
+        // add channel for texting
         let textChannel = member.createChannel(CHANNEL_TYPES.TEXT);
         textChannel.onmessage = (event) => this.onMessage(event);
 
+        // in case of file transfer from me to this member
         member.pc.ondatachannel = (e) => {
           let channel = member.addChannel(e.channel);
           if (channel.label === CHANNEL_TYPES.FILE) {
@@ -235,7 +239,7 @@ export class ChatComponent implements OnInit {
           }
         };
 
-
+        // to get remote description from signalling server
         this.signal.addHandler((data) => {
           let member = this.members.getMember(data.name);
           member.pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(data.answer)));
@@ -248,18 +252,21 @@ export class ChatComponent implements OnInit {
 
       })
     }, this.signal.MESSAGE_TYPES.USERS);
+  }
 
-
-    // ACCEPT OFFER AND ANSWER TO OTHER USERS
+  initAnswerOnOfferHandler() {
     this.signal.addHandler((data) => {
+
+      // new member is attempting to connect to us (sends us an offer)
       let member = new ChatMember(data.name);
       this.members.addMember(member);
-      member.pc = new RTCPeerConnection({'iceServers' : ICE_SERVERS});
+      member.pc = new this.RTCPeerConnection({'iceServers' : ICE_SERVERS});
       member.pc.oniceconnectionstatechange = (event) => {
         console.log(`Connection to user '${data.name}' status: ${member.pc.iceConnectionState}`);
       };
       member.pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(data.offer)));
 
+      // add handlers for channels when they are created
       member.pc.ondatachannel = (e) => {
         let channel = member.addChannel(e.channel);
         switch (channel.label) {
@@ -273,12 +280,25 @@ export class ChatComponent implements OnInit {
         }
       };
 
+      // answer to new member's offer
       member.pc.createAnswer().then(desc => {
         member.pc.setLocalDescription(desc);
         this.signal.sendAnswer(JSON.stringify(desc), data.name);
       });
 
     }, this.signal.MESSAGE_TYPES.OFFER);
+  }
+
+  initChat() {
+
+    // DETECT IF USER LOGOUT
+    this.initMemberLogoutHandler();
+
+    // SEND OFFER TO OTHER USERS
+    this.initMembersConnectionHandler();
+
+    // ACCEPT OFFER AND ANSWER TO OTHER USERS
+    this.initAnswerOnOfferHandler();
 
     this.signal.getUsers();
   }
@@ -298,7 +318,7 @@ export class ChatComponent implements OnInit {
   onFileRequest(event, channel) {
     let filename = JSON.parse(event.data).filename;
     let file = this.files[filename];
-    let chunkSize = 16384;
+    let chunkSize = 16000;
 
     let sendChunk = (offset) => {
       let reader = new FileReader();
@@ -348,6 +368,8 @@ export class ChatComponent implements OnInit {
     let fileToDownload = message.content;
 
     if (fileToDownload) {
+      // my file -> just save it
+
       let reader = new window.FileReader();
       let slice = fileToDownload.slice(0, fileToDownload.size);
       reader.onload = (event) => {
@@ -355,31 +377,32 @@ export class ChatComponent implements OnInit {
         this.saveFile(message.text, data);
       };
       reader.readAsArrayBuffer(slice);
+
     } else {
+      // not my file -> create channel to download the file from remote peer (owner)
+
       let fileOwner = this.members.getMember(message.author);
       fileOwner.addFile(new MemberFile(message.text, null, null));
       let channel = fileOwner.createChannel(CHANNEL_TYPES.FILE);
       channel.onmessage = (event) => {
+        // recieve file chunk
         let file = fileOwner.getFile(message.text);
         file.content.push(event.data);
         file.size += event.data.byteLength;
       };
       channel.onopen = (event) => {
+        // request file by name
         message.isDownloading = true;
         channel.send(JSON.stringify({filename : message.text}));
         this.changes.detectChanges();
       };
       channel.onclose = (event) => {
+        // file transfer is finished -> save file
         let file = fileOwner.getFile(message.text);
         this.saveFile(file.name, new Blob(file.content, file.type));
         message.isDownloading = false;
         this.changes.detectChanges();
       };
-      channel.onerror = (event) => {
-        console.log(`ErrOR`);
-        message.isDownloading = false;
-        this.changes.detectChanges();
-      }
 
     }
 
