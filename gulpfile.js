@@ -35,6 +35,8 @@ gulp.task('server', serverTask.bind(null, dist, port));
 
 gulp.task('buildAndStart', ['ts', 'stylus', 'jade', 'vendor'], serverTask.bind(null, dist, port));
 
+gulp.task('build', ['ts', 'stylus', 'jade', 'vendor'], () => {});
+
 
 
 gulp.task('vendor', ['clean'], function () {

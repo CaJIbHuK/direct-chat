@@ -1,4 +1,7 @@
 import {Inject, Injectable} from "@angular/core";
+import * as data from "./configuration.json!text";
+
+let cfg = JSON.parse(data.default);
 
 
 @Injectable()
@@ -13,7 +16,7 @@ export class SignalService {
     USERS : 'users'
   };
 
-  url : string = 'ws://192.168.0.6:3000';
+  url : string = cfg.SIGNAL_URL;
   connection : WebSocket;
   handlers = {};
 

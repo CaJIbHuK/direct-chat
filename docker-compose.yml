@@ -1,0 +1,25 @@
+version: '3.2'
+services:
+
+  chat:
+    container_name: chat
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: ./compose/chat/Dockerfile
+    environment:
+     - SINGAL_URL=192.168.0.6:3000
+    ports:
+     - 9000:8000
+
+  signal:
+    container_name: signal
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: ./compose/signal/Dockerfile
+    environment:
+     - PORT=3000
+    ports:
+     - 3000:3000
+

@@ -1,5 +1,5 @@
 {
-  "name": "storage-proxy-front",
+  "name": "chat",
   "version": "0.0.1",
   "dependencies": {
     "@angular/common": "~4.0.2",
